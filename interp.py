@@ -1,4 +1,7 @@
-import sys
+import sys # allow randNum inside expr
+import ast
+import operator
+import random
 
 class InitialiseError(Exception):
     pass
@@ -26,41 +29,38 @@ def evaluate(line):
     words = line.split()
 
     for index, word in enumerate(words):
-        if word == 'expr' and words[index + 1] == '..i':
-            return int(eval_expr(float(words[index + 2]), words[index + 3], value2 = float(words[index + 4])))
-    
-        elif word == 'expr':
-            return eval_expr(float(words[index + 1]), words[index + 2], value2 = float(words[index + 3]))
-
-        elif word == '@d':
+        if word == '@d':
             variable = words[index + 1][1:-1]
             if not (words[index + 1][0] == '|' and words[index + 1][-1] == '|') or words[index + 2] != '=':
                 raise SyntaxError("Invalid variable declaration!")
             if variable in variables:
                 raise SyntaxError("Variable already declared!")
             value = words[index + 3]
-            if value == '@gl':
-                if words[index + 4] == '#v':
-                    value = len(str(variables[words[index + 5]]))
+            if value == '@randNum':
+                try:
+                    if '.' in words[index + 4] or '.' in words[index + 5]:
+                        raise SyntaxError("Function '@randNum' only takes integers as valid boundaries")
+                    value = random.randint(int(words[index + 4]), int(words[index + 5]))
+                except ValueError:
+                    raise SyntaxError("Function '@randNum' only takes integers as valid boundaries")
+            elif value == '@gl':
+                if words[index + 4].startswith('#v-'):
+                    value = len(str(variables[words[index + 4][3:]]))
                 else:
                     value = len(str(words[index + 4]))
-            if value in ('[bin', '[den', '[hex'):
+            elif value in ('[bin', '[den', '[hex'):
                 if words[index + 4] != '->':
                     raise SyntaxError("Converter missing!")
             
                 if value == '[bin':
                     if words[index + 5] == 'den]':
-                        if words[index + 6] == '#v':
-                            value = int(str(variables[words[index + 7]]), 2)
-                        elif words[index + 6] == 'expr':
-                            value = eval_expr(words[index + 7], words[index + 8], words[index + 9])
+                        if words[index + 6].startswith('#v-'):
+                            value = int(str(variables[words[index + 6][3:]]), 2)
                         else:
                             value = int(str(words[index + 6]), 2)
                     elif words[index + 5] == 'hex]':
-                        if words[index + 6] == '#v':
-                            value = hex(int(str(variables[words[index + 7]]), 2))[2:].upper()
-                        elif words[index + 6] == 'expr':
-                            value = eval_expr(words[index + 7], words[index + 8], words[index + 9])
+                        if words[index + 6].startswith('#v-'):
+                            value = hex(int(str(variables[words[index + 6][3:]]), 2))[2:].upper()
                         else:
                             value = hex(int(str(words[index + 6]), 2))[2:].upper()
                     else:
@@ -68,17 +68,17 @@ def evaluate(line):
 
                 elif value == '[den':
                     if words[index + 5] == 'bin]':
-                        if words[index + 6] == '#v':
-                            value = bin(int(variables[words[index + 7]]))[2:]
+                        if words[index + 6].startswith('#v-'):
+                            value = bin(int(variables[words[index + 6][3:]]))[2:]
                         elif words[index + 6] == 'expr':
-                            value = bin(int(eval_expr(words[index + 7], words[index + 8], words[index + 9])))[2:]
+                            value = bin(int(evaluate_expression(str(''.join([variables[item[3:]] if item.startswith('#v-') else item for item in words[7:]])))))[2:]
                         else:
                             value = bin(int(words[index + 6]))[2:]
                     elif words[index + 5] == 'hex]':
-                        if words[index + 6] == '#v':
-                            value = hex(int(variables[words[index + 7]]))[2:]
+                        if words[index + 6].startswith('#v-'):
+                            value = hex(int(variables[words[index + 6][3:]]))[2:]
                         elif words[index + 6] == 'expr':
-                            value = hex(int(eval_expr(words[index + 7], words[index + 8], words[index + 9])))[2:]
+                            value = hex(int(evaluate_expression(str(''.join([variables[item[3:]] if item.startswith('#v-') else item for item in words[7:]])))))[2:]
                         else:
                             value = hex(int(words[index + 6]))[2:]
                     else:
@@ -86,28 +86,26 @@ def evaluate(line):
 
                 elif value == '[hex':
                     if words[index + 5] == 'bin]':
-                        if words[index + 6] == '#v':
-                            value = bin(int(str(variables[words[index + 7]]), 16))[2:]
-                        elif words[index + 6] == 'expr':
-                            value = bin(int(eval_expr(words[index + 7], words[index + 8], words[index + 9]), 16))[2:]
+                        if words[index + 6].startswith('#v-'):
+                            value = bin(int(str(variables[words[index + 6][3:]]), 16))[2:]
                         else:
                             value = bin(int(words[index + 6], 16))[2:]
                     elif words[index + 5] == 'den]':
-                        if words[index + 6] == '#v':
-                            value = int(str(variables[words[index + 7]]), 16)[2:]
-                        elif words[index + 6] == 'expr':
-                            value = int(eval_expr(words[index + 7], words[index + 8], words[index + 9]), 16)[2:]
+                        if words[index + 6].startswith('#v-'):
+                            value = int(str(variables[words[index + 6][3:]]), 16)[2:]
+                        else:
+                            value = int(words[index + 6], 16)[2:]
                     else:
                         raise SyntaxError("Invalid conversion target for hexadecimal")
-            if value == 'expr':
-                value = eval_expr(float(words[index + 4]), words[index + 5], float(words[index + 6]))
-            if value == 'true':
+            elif value == 'expr':
+                value = evaluate_expression(str(''.join([variables[item[3:]] if item.startswith('#v-') else item for item in words[(index + 4):]])))
+            elif value == 'true':
                 value = True
-            if value == 'false':
+            elif value == 'false':
                 value = False
-            if value == 'null':
+            elif value == 'null':
                 value = None
-            if value == '@type':
+            elif value == '@type':
                 newVal = words[index + 4]
                 if newVal == 'true':
                     newVal = True
@@ -116,19 +114,12 @@ def evaluate(line):
                 if newVal == 'null':
                     newVal = None
                 if newVal == 'expr':
-                    if words[index + 5] == '..i':
-                        if words[index + 9] != '?':
-                            raise SyntaxError("@type call must end with '?'")
-                        else:
-                            newVal = int(eval_expr(float(words[index + 6]), words[index + 7], float(words[index + 8])))
-                    else:
-                        if words[index + 8] != '?':
-                            raise SyntaxError("@type call must end with '?'")
-                        else:
-                            newVal = eval_expr(float(words[index + 5]), words[index + 6], float(words[index + 7]))
-                if newVal == '#v':
-                    newVal = variables[words[index + 5]]
+                    newVal = 0
+                if newVal.startswith('#v-'):
+                    newVal = newVal[3:]
                 value = eval_type(newVal)
+            else:
+                value = ' '.join(words[index + 3:])
             try:
                 if '.' in value:
                     value = float(value)
@@ -139,9 +130,16 @@ def evaluate(line):
             variables[variable] = value
 
         elif word == '@a':
-            if words[index + 1] == '#v':
+            if words[index + 1] == '@randNum':
                 try:
-                    var = variables[words[index + 2]]
+                    if '.' in words[index + 2] or '.' in words[index + 3]:
+                        raise SyntaxError("Function '@randNum' only takes integers as valid boundaries")
+                    print(random.randint(int(words[index + 2]), int(words[index + 3])))
+                except ValueError:
+                    raise SyntaxError("Funcion '@randNum' only takes integers as valid boundaries")
+            elif words[index + 1].startswith('#v-'):
+                try:
+                    var = variables[words[index + 1][3:]]
                     if var == None:
                         print('null')
                     elif var == True:
@@ -152,60 +150,37 @@ def evaluate(line):
                         print(var)
                 except KeyError:
                     raise SyntaxError('Variable does not exist!')
-            elif words[index + 2] == '@gl':
-                if words[index + 3] == '#v':
-                    print(len(str(variables[words[index + 4]])))
+            elif words[index + 1] == '@gl':
+                if words[index + 2].startswith('#v-'):
+                    print(len(str(variables[words[index + 2][3:]])))
                 else:
-                    print(len(str(words[index + 4])))
+                    print(len(str(words[index + 2])))
             elif words[index + 1] == '@type':
-                if words[index + 2] == '#v':
+                if words[index + 2].startswith('#v-'):
                     if words[index + 4] != '?':
                         raise SyntaxError("@type call must end with '?'")
                     else:
-                        print(variables[words[index + 3]])
+                        print(variables[words[index + 2][3:]])
                 else:
                     cms = [word for word in words if not word.startswith('@a') and not word.startswith('@type') and not word.startswith('?')]
                     if len(cms) > 1:
                         print('str')
                     else:
-                        if cms[0] in ('true', 'false', 'null'):
-                            print('bool')
-                        else:
-                            try:
-                                cmsn = int(cms[0])
-                                if '.' in cms[0]:
-                                    print('float')
-                                else:
-                                    print('int')
-                            except ValueError:
-                                print('str')
+                        print(eval_type(cms[0]))
             elif words[index + 1] == 'expr':
                 if words[index + 2] == '..i':
-                    print(int(eval_expr(words[index + 3], words[index + 4], words[index + 5])))
+                    print(int(evaluate_expression(str(''.join([variables[item[3:]] if item.startswith('#v-') else item for item in words[3:]])))))
                 else:
-                    print(eval_expr(words[index + 2], words[index + 3], words[index + 4]))
-            elif words[index + 1] == '..i':
-                if words[index + 2] == '#v':
-                    print(int(variables[words[index + 3]]))
-                if words[index + 2] == 'expr':
-                    print(int(eval_expr(words[index + 3], words[index + 4], words[index + 5])))
-            elif words[index + 1] == '@d':
-                raise SyntaxError("Cannot define variable inside 'aloud' statement.")
+                    print(evaluate_expression(str(''.join([variables[item[3:]] if item.startswith('#v-') else item for item in words[2:]]))))
             else:
-                print(' '.join([word for word in words if not word.startswith('@a')]))
-
-        elif word == '@type':
-            if words[index + 1] == '#v':
-                try:
-                    eval_type(variables[words[index + 2]])
-                except KeyError:
-                    raise SyntaxError('No such variable defined!')
-            else:
-                eval_type(' '.join([word for word in words if not word.startswith('@type')]))
+                text = [variables[item[3:]] if item.startswith('#v-') else item for item in [word for word in words if not word.startswith('@a')]]
+                print(' '.join(map(str, text)))
 
         elif word == '@i':
             variable = words[index + 1][1:-1]
-            text = ' '.join([word for word in words if not word.startswith('@i') and not word.startswith('|') and not word.startswith('~')])
+            text = [word for word in words if not word.startswith('@i') and not word.startswith('|') and not word.startswith('~')]
+            input_text = [variables[item[3:]] if item.startswith('#v-') else item for item in text]
+            text = ' '.join(map(str, input_text))
             response = input(text + ' ')
             response = response.strip()
             try:
@@ -215,17 +190,6 @@ def evaluate(line):
             except ValueError:
                 new_res = str(response)
             variables[variable] = new_res
-        
-        elif word == "%aft%":
-            all_text = ' '.join([word for word in words if not word.startswith('%aft%')])
-
-            for var in all_text.split():
-                if var.startswith('#i-'):
-                    key = var[3:]
-                    if key in variables:
-                        all_text = all_text.replace(var, str(variables[key]))
-
-            print(all_text)
 
 
 def eval_type(var):
@@ -236,26 +200,43 @@ def eval_type(var):
         return 'int'
     elif value == "<class 'bool'>":
         return 'bool'
+    elif value == "<class 'list'>":
+        return 'array'
     else:
         return 'str'
 
-def eval_expr(value1, operation, value2):
-    value1 = float(value1)
-    value2 = float(value2)
+operators = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg
+}
 
+def evaluate_expression(expression):
     try:
-        if operation == '+':
-            return value1 + value2
-        elif operation == '-':
-            return value1 - value2
-        elif operation == '*':
-            return value1 * value2
-        elif operation == '/':
-            return value1 / value2
-        else:
-            raise SyntaxError("Invalid operation!")
-    except ValueError:
-        raise SyntaxError("Values must be numbers!")
+        # Parse the expression into an AST
+        tree = ast.parse(expression, mode='eval')
+        return _evaluate_ast(tree.body)
+    except Exception as e:
+        print(expression)
+        raise ValueError("Invalid expression") from e
+
+def _evaluate_ast(node):
+    if isinstance(node, ast.BinOp):  # Binary operations (e.g., 2 + 3)
+        left = _evaluate_ast(node.left)
+        right = _evaluate_ast(node.right)
+        return operators[type(node.op)](left, right)
+    elif isinstance(node, ast.UnaryOp):
+        operand = _evaluate_ast(node.operand)
+        return operators[type(node.op)](operand)
+    elif isinstance(node, ast.Constant):
+        return node.n
+    elif isinstance(node, ast.Expression):
+        return _evaluate_ast(node.body)
+    else:
+        raise TypeError("Unsupported type")
 
 def main():
     if len(sys.argv) == 2:
