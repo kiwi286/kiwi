@@ -1,7 +1,7 @@
-import sys # allow randNum inside expr
-import ast
-import operator
-import random
+import sys # allow for reading a file's contents
+import ast # calculating mathematical equations
+import operator # used with ast
+import random # for @randNum
 
 class InitialiseError(Exception):
     pass
@@ -22,7 +22,7 @@ def interpret(filename):
     
     for line in file_contents[1:]:
         line = line.strip()
-        if line:
+        if line: # check if the line is not empty
             evaluate(line)
 
 def evaluate(line):
